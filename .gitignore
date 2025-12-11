@@ -1,0 +1,9 @@
+# ------------------------------
+# Data files to ignore
+# ------------------------------
+# CSV, TXT, OUT files
+*.csv
+*.txt
+*.out
+*.png
+*_old.py
