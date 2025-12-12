@@ -1,35 +1,87 @@
 from argopy import DataFetcher
 import bitsea.basins.V2 as OGS
 from bitsea.commons.mask import Mask
+import seawater as sw
+import os
 
 ###
-### AIM n1: select all the floats in the tyr sea.
-### Reasons: the polygon in bit.sea is not squared
+### AIM n1: select all the floats in the MEDSEA
 ###
 
 #### Datafetcher isnt able to subset irregular shape (only rectangules are allowed)
-#### solution to skip the issue is to intersect datafetcher and rectangule in bitsea with a function
+#### solution to skip the issue is to intersect datafetcher and rectangule in bitsea with a function starting fetching medsea data 
+# issue --> DataFetcher is too low
 
-# es for tyr:
-# 
+# Dynamic inputs
+YYYY_MM_start = '2013-01'
+YYYY_MM_end   = '2024-01'
+OUTDIR        = 'NETCDF_FILES_'+YYYY_MM_start+'_'+YYYY_MM_end +'/'
+MASKFILE      = '/g100_work/OGS_devC/Benchmark/SETUP/PREPROC/MASK/meshmask.nc'
+os.makedirs(OUTDIR, exist_ok=True)
 
-## [lon_min, lon_max, lat_min, lat_max, pres_min, pres_max, tmin, tmax]:
-#box     = [9.25, 16.5, 36.75, 41.25, 0, 2000, '2013-01', '2025-02'] #tyr2 box 
-box_med = [-5,36,30,46, 0, 2000, '2013-01', '2025-01']
 
-MASKFILE='/g100_work/OGS_devC/Benchmark/SETUP/PREPROC/MASK/meshmask.nc'
+# Static inputs
+box_med  = [-5,36,30,46, 0, 2000, YYYY_MM_start, YYYY_MM_end ]
+VARLIST  = ['PO4','NO3','DIC','AT','pHT','SiOH4']
+basin_objects = {
+    "alb": OGS.alb,
+    "swm1": OGS.swm1,
+    "swm2": OGS.swm2,
+    "nwm": OGS.nwm,
+    "tyr1": OGS.tyr1,
+    "tyr2": OGS.tyr2,
+    "adr1": OGS.adr1,
+    "adr2": OGS.adr2,
+    "aeg": OGS.aeg,
+    "ion1": OGS.ion1,
+    "ion2": OGS.ion2,
+    "ion3": OGS.ion3,
+    "lev1": OGS.lev1,
+    "lev2": OGS.lev2,
+    "lev3": OGS.lev3,
+    "lev4": OGS.lev4,
+}
+
+
+
 # standard expert or researchmode
 # datails at :https://argopy.readthedocs.io/en/latest/user-guide/fetching-argo-data/user_mode.html#user-mode
 
-ds    = DataFetcher(mode='standard', ds='bgc',params=['DOXY'] ).region(box).to_xarray()
+ds    = DataFetcher(mode='standard', ds='bgc',params=['DOXY'] ).region(box_med).to_xarray()
 #df    = DataFetcher(mode='standard').region(box).to_dataframe()
 
+# for all basins calculate NN-vars
+for Sub in basin_objects.keys():
+    mask      = basin_objects[Sub].is_inside(ds['LONGITUDE'].values, ds['LATITUDE'].values)
+    ds_basin  = ds.isel(N_POINTS=mask)
+    NNvar     = ds_basin.argo.canyon_med.predict() 
+    if len(NNvar['DOXY'].data) == 0 :
+        print('No data in --->' + Sub)
+        continue 
+    density   = sw.dens(NNvar['PSAL'],NNvar['TEMP'] , NNvar['PRES'])
+    for VAR in VARLIST:
+        if VAR=='pHT':
+            pass
+        else:
+            NNvar[VAR]= NNvar[VAR] * density/1000.
+    
+    # check on data type of attributes , converted in str if needed
+    #eg Fetched_constraints:  [x=-5.00/36.00; y=30.00/46.00; z=0.0/2000.0;
+    
+    for k, v in list(NNvar.attrs.items()):
+        try:
+            NNvar.attrs[k] = str(v)
+        except Exception as e:
+            raise TypeError(f"Attributo '{k}' non serializzabile: valore={v}, errore={e}")
+    # end check
 
-# 
-mask = OGS.tyr2.is_inside(ds['LONGITUDE'].values, ds['LATITUDE'].values)
-ds_tyr2 = ds.isel(N_POINTS=mask)
+    outfile = os.path.join(OUTDIR, Sub + "_NN_derived_vars.nc")
+    NNvar.to_netcdf(outfile)
 
-po4 = ds_tyr2.argo.canyon_med.predict('PO4')
+import sys
+sys.exit()
+
+po4 = ds_basin.argo.canyon_med.predict('PO4')
 po4_profiles= po4.argo.point2profile()
 
 TheMask = Mask.from_file(MASKFILE)
