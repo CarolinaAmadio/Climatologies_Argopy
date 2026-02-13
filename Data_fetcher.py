@@ -3,22 +3,37 @@ import bitsea.basins.V2 as OGS
 from bitsea.commons.mask import Mask
 import seawater as sw
 import os
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
+import argparse
 
+parser = argparse.ArgumentParser(description="Script per generare figure da tabelle.")
+parser.add_argument("--outdir", "-o", required=True,  help="Directory di output per le figure")
+parser.add_argument("--year",   "-y", required=True,  help="Only single year is allowed")
+parser.add_argument("--month",  "-m", required=True,  help="Single month (01..12)")
+args = parser.parse_args()
+
+OUTDIR   = args.outdir
+YEAR   = str(args.year)
+MONTH = str(args.month).zfill(2)
 ###
 ### AIM n1: select all the floats in the MEDSEA
 ###
 
 #### Datafetcher isnt able to subset irregular shape (only rectangules are allowed)
 #### solution to skip the issue is to intersect datafetcher and rectangule in bitsea with a function starting fetching medsea data 
-# issue --> DataFetcher is too low
+# issue --> DataFetcher is too low erdap could crash
 
 # Dynamic inputs
-YYYY_MM_start = '2013-01'
-YYYY_MM_end   = '2024-01'
-OUTDIR        = 'NETCDF_FILES_'+YYYY_MM_start+'_'+YYYY_MM_end +'/'
+start_date = datetime(int(YEAR), int(MONTH), 1)
+end_date   = start_date + relativedelta(months=1)
+
+YYYY_MM_start = start_date.strftime("%Y-%m")
+YYYY_MM_end   = end_date.strftime("%Y-%m")
+
+OUTDIR        = os.path.join(args.outdir,YEAR)
 MASKFILE      = '/g100_work/OGS_devC/Benchmark/SETUP/PREPROC/MASK/meshmask.nc'
 os.makedirs(OUTDIR, exist_ok=True)
-
 
 # Static inputs
 box_med  = [-5,36,30,46, 0, 2000, YYYY_MM_start, YYYY_MM_end ]
@@ -42,8 +57,6 @@ basin_objects = {
     "lev4": OGS.lev4,
 }
 
-
-
 # standard expert or researchmode
 # datails at :https://argopy.readthedocs.io/en/latest/user-guide/fetching-argo-data/user_mode.html#user-mode
 
@@ -54,7 +67,18 @@ ds    = DataFetcher(mode='standard', ds='bgc',params=['DOXY'] ).region(box_med).
 for Sub in basin_objects.keys():
     mask      = basin_objects[Sub].is_inside(ds['LONGITUDE'].values, ds['LATITUDE'].values)
     ds_basin  = ds.isel(N_POINTS=mask)
-    NNvar     = ds_basin.argo.canyon_med.predict() 
+    if ds_basin['DOXY'].size == 0:
+       print(f"No valid data to predict for ---> {Sub}")
+       continue
+    if ds_basin['DOXY'].shape[0] < 1:
+       print(f"Not enough points in ---> {Sub}")
+       continue
+    try:
+       NNvar     = ds_basin.argo.canyon_med.predict() 
+    except Exception as e:
+        print(f"Prediction failed for {Sub}: {e}")
+        continue
+
     if len(NNvar['DOXY'].data) == 0 :
         print('No data in --->' + Sub)
         continue 
@@ -64,19 +88,27 @@ for Sub in basin_objects.keys():
             pass
         else:
             NNvar[VAR]= NNvar[VAR] * density/1000.
-    
+    NN_profiles= NNvar.argo.point2profile()
+
     # check on data type of attributes , converted in str if needed
     #eg Fetched_constraints:  [x=-5.00/36.00; y=30.00/46.00; z=0.0/2000.0;
     
-    for k, v in list(NNvar.attrs.items()):
+    for k, v in list(NN_profiles.attrs.items()):
         try:
-            NNvar.attrs[k] = str(v)
+            NN_profiles.attrs[k] = str(v)
         except Exception as e:
             raise TypeError(f"Attributo '{k}' non serializzabile: valore={v}, errore={e}")
     # end check
+    print('processed -->'  + Sub)
+    MONTHstr  = str(args.month).zfill(2)
+    ## all profiles in a sub-basin was saved in netcdf
+    outfile   = os.path.join(OUTDIR,f"{Sub}_{MONTHstr}_NN_derived_vars.nc")
+    NN_profiles.to_netcdf(outfile)
 
-    outfile = os.path.join(OUTDIR, Sub + "_NN_derived_vars.nc")
-    NNvar.to_netcdf(outfile)
+
+
+
+"""
 
 import sys
 sys.exit()
@@ -158,4 +190,4 @@ ax2.set_title('Mean profile')
 
 plt.tight_layout()
 plt.savefig("PO4_contourf_and_meanprofile_Tyr2.png", dpi=150)
-
+"""
