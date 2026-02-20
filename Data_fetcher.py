@@ -32,7 +32,7 @@ YYYY_MM_start = start_date.strftime("%Y-%m")
 YYYY_MM_end   = end_date.strftime("%Y-%m")
 
 OUTDIR        = os.path.join(args.outdir,YEAR)
-MASKFILE      = '/g100_work/OGS_devC/Benchmark/SETUP/PREPROC/MASK/meshmask.nc'
+#MASKFILE      = '/g100_work/OGS_test2528/Benchmark/SETUP/PREPROC/MASK/meshmask.nc'
 os.makedirs(OUTDIR, exist_ok=True)
 
 # Static inputs
@@ -61,7 +61,7 @@ basin_objects = {
 # datails at :https://argopy.readthedocs.io/en/latest/user-guide/fetching-argo-data/user_mode.html#user-mode
 
 ds    = DataFetcher(mode='standard', ds='bgc',params=['DOXY'] ).region(box_med).to_xarray()
-#df    = DataFetcher(mode='standard').region(box).to_dataframe()
+#df    = DataFetcher(mode='standard', ds='bgc',params=['DOXY']).region(box).to_dataframe()
 
 # for all basins calculate NN-vars
 for Sub in basin_objects.keys():
