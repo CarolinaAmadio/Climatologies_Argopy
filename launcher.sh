@@ -13,7 +13,6 @@ cd $SLURM_SUBMIT_DIR
 # calculate NN-based profiles
 # arrange them in 16 subbasins
 # save them in OUTDIR
- save them in OUTDIR
 
 
 echo "Job started at: $(date)"
