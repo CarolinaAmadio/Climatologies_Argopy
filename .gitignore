@@ -12,3 +12,7 @@
 *_old.py
 old
 *profile.inc
+
+# directories
+*script_no_used
+*CANYON_MED_NO_QC*
